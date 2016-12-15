@@ -11,4 +11,8 @@
 
    > will create a dist document
 
-3. cd to dist ,run python3 server.py
+3. cd ../dist
+
+   python3 server.py
+
+*now you can accept http://127.0.0.1:8080/index.html to play game, have fun!*
