@@ -1,4 +1,4 @@
-package tetris
+package main
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ type player struct {
 
 type Game struct {
 	mgr     *GamesMgr
-	id      xid.ID
+	id      string
 	players []*player
 
 	mutex sync.Mutex
@@ -58,6 +58,11 @@ func (mgr *GamesMgr) Gain(id string) *Game {
 		return game
 	}
 
+	_, err := xid.FromString(id)
+	if err != nil {
+		return nil
+	}
+
 	newGame := new(Game)
 	newGame.init(mgr, id)
 	mgr.Games[id] = newGame
@@ -75,16 +80,16 @@ func (mgr *GamesMgr) Delete(id string) bool {
 /*--------------------------------------------------------- Game Method ---------------------------------------------------------*/
 func (game *Game) init(mgr *GamesMgr, id string) {
 	game.mgr = mgr
-	var err error
-	game.id, err = xid.FromString(id)
-	if err == nil {
-		mgr.Games[id] = game
-	}
+	game.players = make([]*player, 2)
+	game.id = id
+
+	mgr.Games[id] = game
 }
 
 // Handle function deal with udp data to json object and dispatch to message's self handle
 func (game *Game) Handle(data []byte, sender *player) {
 	var ms ClientMessage
+	log.Println(string(data))
 	err := json.Unmarshal(data, &ms)
 	if err != nil {
 		log.Println("json decode err:", err)
@@ -92,15 +97,16 @@ func (game *Game) Handle(data []byte, sender *player) {
 
 	game.mutex.Lock()
 	defer game.mutex.Unlock()
-	switch ms.Command {
-	case Update:
+	log.Println(ms.Code)
+	switch ms.Code {
+	case c_update:
 		game.handleUpdate(ms, sender)
 
-	case Leave:
+	case c_leave:
 		game.handleLeave(ms, sender)
 
-	case Start:
-		//game.handleStart(ms)
+	case c_start:
+		game.handleStart(ms, sender)
 
 	default:
 
@@ -132,8 +138,25 @@ func (game *Game) handleUpdate(ms ClientMessage, sender *player) {
 		return
 	}
 
-	sm := ServerMessage{Command: Update, Other: *sender.data}
+	sm := ServerMessage{Code: s_update, Other: sender.data}
 	game.notify(nOther, sm)
+}
+
+func (game *Game) handleStart(ms ClientMessage, sender *player) {
+	if sender.data == nil {
+		sender.data = &GameData{Status: Start}
+	} else if sender.data.Status == Waitting || sender.data.Status == Pause {
+		sender.data.Status = Start
+	}
+
+	p, _ := game.getOpponent(sender)
+	if p == nil || p.data == nil || p.data.Status != Start {
+		return
+	}
+
+	for i := 0; i < len(game.players); i++ {
+		game.notify(i, ServerMessage{Code: s_start})
+	}
 }
 
 func (game *Game) getOpponent(p *player) (*player, int) {
@@ -164,7 +187,7 @@ func (game *Game) notify(idx int, data ServerMessage) {
 		return
 	}
 
-	//response(player.addr, data)
+	game.response(player, data)
 }
 
 func (game *Game) playerLeave(p *player) {
@@ -204,20 +227,19 @@ func (game *Game) listen(p *player) {
 	defer conn.Close()
 	for p.conn == conn {
 		messageType, message, err := conn.ReadMessage()
-		if websocket.BinaryMessage != messageType {
-			log.Println("error message Type")
-		}
-		if err == io.EOF {
+		if err == io.EOF || websocket.CloseMessage == messageType {
 			game.playerLeave(p)
 			break
-		} else {
+		} else if websocket.TextMessage == messageType {
 			game.Handle(message, p)
+		} else {
+			log.Println("error message Type")
 		}
 	}
 }
 
 func (game *Game) Destroy() {
-	game.mgr.Delete(game.id.String())
+	game.mgr.Delete(game.id)
 	for i := 0; i < len(game.players); i++ {
 		if game.players[i] != nil && game.players[i].data != nil {
 			game.players[i].conn.Close()
@@ -228,7 +250,6 @@ func (game *Game) Destroy() {
 
 func (game *Game) TryJoin(token string, conn *websocket.Conn) bool {
 	game.mutex.Lock()
-	defer game.mutex.Unlock()
 
 	player, _ := game.getPlayer(token)
 	if player != nil {
@@ -238,15 +259,30 @@ func (game *Game) TryJoin(token string, conn *websocket.Conn) bool {
 			if game.players[i] == nil {
 				game.players[i] = newPlayer(token, conn)
 				player = game.players[i]
+				break
 			}
 		}
 	}
+	game.mutex.Unlock()
+
 	if player != nil {
 		game.listen(player)
 		return true
 	}
 
 	return false
+}
+
+func (game *Game) response(p *player, ms ServerMessage) {
+	str, err := json.Marshal(ms)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	err = p.conn.WriteMessage(websocket.TextMessage, str)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 /*--------------------------------------------------------- End Game ---------------------------------------------------------*/

@@ -1,5 +1,7 @@
 import { BehaviorSubject } from 'rxjs/BehaviorSubject';
+import {Observable} from 'rxjs/Observable';
 import { Subject } from 'rxjs/Subject';
+import { ClientMessage } from './message_struct';
 
 interface stateChange {
     state: number;
@@ -19,6 +21,7 @@ class WebService {
         this.protocols = protocols;
         
         this.state = new BehaviorSubject<stateChange>({state: this._state});
+        this.message = new Subject<any>();
     }
 
     connect() {
@@ -38,16 +41,17 @@ class WebService {
         }
     }
 
-    send = (data: any, force: boolean = true): boolean =>{
+    send = (data: ClientMessage, force: boolean = true): boolean =>{
         if (this._state != WebSocket.OPEN) {
             return false;
         }
 
-        if (!force && this.ws.bufferedAmount == 0) {
+        if (!force && this.ws.bufferedAmount > 0) {
             return false;
         }
 
-        this.ws.send(data);
+        let json = JSON.stringify(data);
+        this.ws.send(json);
         return true;
     }
 

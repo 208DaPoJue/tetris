@@ -1,3 +1,6 @@
+import { GameView } from './view';
+import { Statu, GameData } from './message_struct';
+import { BlockSize } from './config';
 type Shape = number[][];
 
 /*
@@ -198,6 +201,9 @@ function mapToWorld(item: BlockItem, position: Phaser.Point): Phaser.Point[] {
 }
 
 
+const empty = 0;
+const ocupy = 1;
+const intBitCount = 32;
 export
 class GameGrid {
     map: number[][];
@@ -255,8 +261,101 @@ class GameGrid {
     private newLine(): number[] {
         let arr = new Array(this.width);
         for (let i = 0; i < this.width; i++) {
-            arr[i] = 0;
+            arr[i] = empty;
+        }
+        return arr;
+    }
+
+    updateFromBitset = (n: number[])=> {
+        if (!n){
+            return;
+        }
+        let x = 0, y = 0;
+        for (let idx = 0; idx < n.length; idx++) {
+            let val = n[idx];
+            for (let i = 0; i < intBitCount; i++) {
+                this.map[y][x++] = (val & (1 << i)) ? ocupy: empty;
+                if (x >= this.width) {
+                    x = 0;
+                    y++;
+                }
+                if (y >= this.height) {
+                    break;
+                }
+            }
+        }
+    }
+
+    toBitset = (): number[] => {
+        let nBit = 0, val = 0;
+        let arr = [];
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                val |= (this.map[y][x] << nBit);
+                nBit++;
+                if (nBit == intBitCount) {
+                    arr.push(val);
+                    nBit = 0, val = 0;
+                }
+            }
+        }
+        if (nBit != 0) {
+            arr.push(val);
         }
         return arr;
     }
 }
+
+export
+class GameModel {
+    score: number;
+    grid: GameGrid;
+    sprite: BlockSprite;
+    status: Statu;
+
+    readonly height: number;
+    readonly width: number;
+    readonly blockSize: number;
+
+    constructor(game: Phaser.Game, width: number, height: number, blockSize: number) {
+        this.height = height;
+        this.width = width;
+        this.blockSize = blockSize;
+
+        this.reset()
+    }
+
+    reset = () => {
+        this.score = 0;
+        this.status = Statu.waitting;
+        this.grid = new GameGrid(this.width, this.height);
+    }
+
+    updateFromJson = (data :GameData) => {
+        this.status = data.status;
+        this.score = data.score;
+        this.sprite = new BlockSprite(data.sprite.type, data.sprite.state, new Phaser.Point(data.sprite.pos[0], data.sprite.pos[1]));
+        this.grid.updateFromBitset(data.grid);
+    }
+
+    toJson = (): GameData => {
+        let data: GameData = {
+            status: this.status,
+            score: this.score,
+            
+            grid: this.grid.toBitset()
+        };
+        if (this.sprite) {
+            data['sprite'] = { 
+                type: this.sprite.type,
+                state: this.sprite.state,
+                pos: [this.sprite.position.x, this.sprite.position.y]
+            };
+        }
+        return data;
+    }
+}
+
+
+
+

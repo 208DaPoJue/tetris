@@ -1,8 +1,8 @@
 /// <reference path="../typings/index.d.ts" />
-import { GameGrid, BlockItem, mapToWorld, BlockSprite, BlockType, BlockMap, bound } from './model';
+import { GameGrid, BlockItem, mapToWorld, BlockSprite, BlockType, BlockMap, bound, GameModel } from './model';
 import { GameView } from './view'
-import { GameWidth, GameHeight, sounds } from './config';
-
+import { GameWidth, GameHeight, sounds, BlockSize } from './config';
+import { Statu } from './message_struct';
 
 function checkValid(sprite: BlockItem, position: Phaser.Point, grid: GameGrid): boolean {
     let rect = bound(sprite, position);
@@ -19,81 +19,64 @@ function checkValid(sprite: BlockItem, position: Phaser.Point, grid: GameGrid): 
     return true;
 }
 
+
 export
 class Control {
-    grid: GameGrid;
-    sprite: BlockSprite;
-    game: Phaser.Game;
     sound: any = {};
+
     private random = new Phaser.RandomDataGenerator();
-    private view: GameView;
     
     private rate = 500;
     private lastTime = 0;
-    constructor(){
-        this.game = new Phaser.Game(800, 600, Phaser.CANVAS, 'content', {preload: this.preload, update: this.update, create: this.create, render: this.render});
-    }
 
-    restart = () => {
-        this.grid = new GameGrid(GameWidth, GameHeight);
-        this.sprite = null;
-    }
-
-    create = () => {
-        
-        document.body.oncontextmenu = function() { return false; };
-
-        Phaser.Canvas.setUserSelect(this.game.canvas, 'none');
-        Phaser.Canvas.setTouchAction(this.game.canvas, 'none');
-
+    constructor(public game: Phaser.Game, public model: GameModel, public view: GameView) {
         this.sound.press = this.game.add.audio('press');
         this.sound.explod = this.game.add.audio('explod');
         this.sound.congratulation = this.game.add.audio('congratulation');
 
-        this.view = new GameView(this);
         this.addEventListener();
-        this.restart();
     }
 
-    preload = () => {
-        this.game.load.audio('press', sounds.press);
-        this.game.load.audio('explod', sounds.explod);
-        this.game.load.audio('congratulation', sounds.congratulation);
+    restart = () => {
+        this.model.reset();
     }
 
     update = ()=> {
-        if (!this.sprite) {
-            this.sprite = this.createSprite();
+        if (this.model.status != Statu.run) {
+            return;
+        }
+
+        if (!this.model.sprite) {
+            this.model.sprite = this.createSprite();
         }
 
         if (this.rate + this.lastTime <= this.game.time.now) {
             console.log("update");
             this.lastTime = this.game.time.now;
 
-            if (!Control.move(this.sprite, new Phaser.Point(0, 1), this.grid)) {
-                Control.updateGrid(this.grid, this.sprite);
-                let rect = bound(this.sprite, this.sprite.position);
-                let lines = this.grid.checkLineComplete(this.grid, rect.y, rect.y + rect.height - 1);
+            if (!Control.move(this.model.sprite, new Phaser.Point(0, 1), this.model.grid)) {
+                Control.updateGrid(this.model.grid, this.model.sprite);
+                let rect = bound(this.model.sprite, this.model.sprite.position);
+                let lines = this.model.grid.checkLineComplete(this.model.grid, rect.y, rect.y + rect.height - 1);
                 if (lines.length > 0) {
-                    this.grid.deleteLines(lines);
+                    this.model.grid.deleteLines(lines);
                     this.sound.explod.play();
                 }
 
                 if (rect.y < 0) {
                     this.restart();
                 }
-                this.sprite = this.createSprite();
+                this.model.sprite = this.createSprite();
             }
         }
 
         if (this.view) {
             this.view.refresh();
-        }
-        
+        }   
     }
 
     render = () => {
-        if (this.sprite) {
+        if (this.model.sprite) {
             this.view.refresh();
         }
     }
@@ -131,9 +114,9 @@ class Control {
     }
 
     changeSpriteState = () => {
-        let newVal = this.sprite.change();
-        if (checkValid(newVal, newVal.position, this.grid)) {
-            this.sprite = newVal;
+        let newVal = this.model.sprite.change();
+        if (checkValid(newVal, newVal.position, this.model.grid)) {
+            this.model.sprite = newVal;
             return true;
         }
         return false;
@@ -143,12 +126,15 @@ class Control {
         //this.game
         let keys = this.game.input.keyboard.addKeys( { 'down': Phaser.KeyCode.DOWN, 'left': Phaser.KeyCode.LEFT, 'right': Phaser.KeyCode.RIGHT, 'up':  Phaser.KeyCode.UP, 'change': Phaser.KeyCode.SPACEBAR } );
 
-        let moveWrap = (offset: Phaser.Point) => { return ()=>{ Control.move(this.sprite, offset, this.grid)} };
+        let moveWrap = (offset: Phaser.Point) => { return ()=>{ Control.move(this.model.sprite, offset, this.model.grid)} };
         let holdKey = (key: Phaser.Key, nInterval: number, func:()=>void) => {
-            
             let base = 0;
             key.onDown.add(()=> {base = 0;});
             key.onHoldCallback = ()=> { 
+                if (this.model.status != Statu.run) {
+                    return;
+                }
+
                 let cnt = this.game.time.time - base;
                 if (cnt > nInterval ) {
                     this.sound.press.play();
@@ -170,10 +156,20 @@ class Control {
         holdKey(keys.left, 150, moveWrap(new Phaser.Point(-1, 0)));
         holdKey(keys.right, 150, moveWrap(new Phaser.Point(1, 0)));
         holdKey(keys.up, 150, change);
-        holdKey(keys.change, 150, change);   
+        holdKey(keys.change, 150, change);
     }
 }
 
-window.onload = () => {
-    var game = new Control();
-};
+export
+class ShadowControl {
+    constructor(game: Phaser.Game, private model: GameModel, private view: GameView) {
+    }
+
+    update = ()=> {
+        this.view.refresh();
+    }
+    
+    render = ()=> {
+        this.view.refresh();
+    }
+}

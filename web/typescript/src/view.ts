@@ -1,13 +1,15 @@
 import { Control } from './control';
-import { mapToWorld } from './model';
+import { mapToWorld, GameModel } from './model';
 import { BlockSize, GameWidth, GameHeight } from './config';
 
 export
 class GameView {
     private view: Phaser.BitmapData;
-    constructor(private ctrl: Control) {
-         this.view = ctrl.game.make.bitmapData(BlockSize * GameWidth, BlockSize * GameHeight);
-         this.view.addToWorld(32, 32);
+    private readonly model: GameModel;
+    constructor(game: Phaser.Game, model: GameModel, x: number, y: number) {
+         this.view = game.make.bitmapData(model.blockSize * model.width, model.blockSize * model.height);
+         this.model = model;
+         this.view.addToWorld(x, y);
     }
 
     refresh = ()=> {
@@ -27,29 +29,37 @@ class GameView {
     drawGrid =() => {
         for (var y = 0; y < GameHeight; y++) {
             for (var x = 0; x < GameWidth; x++) {
-                if (this.ctrl.grid.map[y][x] > 0) {
-                    this.view.rect(x * BlockSize, y * BlockSize, BlockSize, BlockSize, '#000');
-                    this.view.rect(x * BlockSize + 1, y * BlockSize + 1, BlockSize - 2, BlockSize - 2, '#aaa');
+                if (this.model.grid.map[y][x] > 0) {
+                    this.drawBlock(x, y);
                 } else {
-                    this.view.rect(x * BlockSize, y * BlockSize, BlockSize, BlockSize, '#3f5c67');
+                    this.clearBlock(x, y);
                 }
             }
         }
     }
 
     drawSprite = ()=> {
-        if (!this.ctrl.sprite) {
+        if (!this.model.sprite) {
             return;
         }
 
-        let pts = mapToWorld(this.ctrl.sprite, this.ctrl.sprite.position);
+        let pts = mapToWorld(this.model.sprite, this.model.sprite.position);
         for (let pt of pts) {
-            if (pt.x < 0 || pt.y < 0 || pt.x >= GameWidth || pt.y >= GameHeight) {
-                continue;
-            }
-            
-            this.view.rect(pt.x * BlockSize, pt.y * BlockSize, BlockSize, BlockSize, '#000');
-            this.view.rect(pt.x * BlockSize + 1, pt.y * BlockSize + 1, BlockSize - 2, BlockSize - 2, '#aaa');
+            this.drawBlock(pt.x, pt.y);
         }
+    }
+
+    private drawBlock = (x: number, y: number) => {
+        if (x < 0 || y < 0 || x >= this.model.width || y >= this.model.height) {
+                return;
+        }
+        let blockSize = this.model.blockSize;
+        this.view.rect(x * blockSize, y * blockSize, blockSize, blockSize, '#000');
+        this.view.rect(x * blockSize + 1, y * blockSize + 1, blockSize - 2, blockSize - 2, '#aaa');
+    }
+
+    private clearBlock = (x: number, y: number) => {
+        let blockSize = this.model.blockSize;
+        this.view.rect(x * blockSize, y * blockSize, blockSize, blockSize, '#3f5c67');
     }
 }

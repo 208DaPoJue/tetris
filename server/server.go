@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
-	"tetris/src"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/rs/xid"
 )
 
 func checkOrigin(r *http.Request) bool {
@@ -25,7 +25,7 @@ func main() {
 	directory := flag.String("d", ".", "the directory of static file to host")
 	flag.Parse()
 
-	mgr := tetris.NewGameMgr()
+	mgr := NewGameMgr()
 
 	r := gin.New()
 	setupTetris(&mgr, r, *directory)
@@ -33,23 +33,15 @@ func main() {
 	r.Run(":" + *port)
 }
 
-func serveWs(mgr *tetris.GamesMgr, w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return
-	}
-	log.Println(origin)
-	idx := strings.LastIndex(origin, "\\")
-	if idx < 0 {
-		return
-	}
-	room := origin[idx+1:]
+func serveWs(mgr *GamesMgr, room string, w http.ResponseWriter, r *http.Request) {
+	log.Println("WebSocket link")
 
 	cookie, _ := r.Cookie("token")
 	token := ""
 	resp := make(http.Header)
 	if cookie == nil {
 		token = fmt.Sprintf("%d", Count)
+		Count++
 	} else {
 		token = cookie.Value
 		resp.Add("Set-Cookie", "token="+token)
@@ -58,19 +50,32 @@ func serveWs(mgr *tetris.GamesMgr, w http.ResponseWriter, r *http.Request) {
 	conn, _ := upgrader.Upgrade(w, r, resp)
 	game := mgr.Gain(room)
 
+	if game == nil {
+		data := websocket.FormatCloseMessage(InvalidPath.Code, InvalidPath.Text)
+		conn.WriteControl(websocket.CloseMessage, data, time.Now().Add(1000))
+		conn.Close()
+		return
+	}
+
 	if game.TryJoin(token, conn) == false {
 		conn.Close()
 	}
 }
 
-func setupTetris(mgr *tetris.GamesMgr, r *gin.Engine, dir string) {
-	r.GET("/html/:room", func(c *gin.Context) {
+func setupTetris(mgr *GamesMgr, r *gin.Engine, dir string) {
+	r.GET("/tetris/:room", func(c *gin.Context) {
 		http.ServeFile(c.Writer, c.Request, dir+"/tetris/index.html")
+	})
+
+	r.GET("/tetris", func(c *gin.Context) {
+		room := xid.New()
+		http.Redirect(c.Writer, c.Request, "/tetris/"+room.String(), 307)
 	})
 
 	r.Static("/static", dir+"/tetris/static")
 
-	r.GET("/ws/tetris", func(c *gin.Context) {
-		serveWs(mgr, c.Writer, c.Request)
+	r.GET("/ws/tetris/:room", func(c *gin.Context) {
+		room := c.Param("room")
+		serveWs(mgr, room, c.Writer, c.Request)
 	})
 }
