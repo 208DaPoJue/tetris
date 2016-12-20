@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"sync"
 	"time"
@@ -89,7 +88,6 @@ func (game *Game) init(mgr *GamesMgr, id string) {
 // Handle function deal with udp data to json object and dispatch to message's self handle
 func (game *Game) Handle(data []byte, sender *player) {
 	var ms ClientMessage
-	log.Println(string(data))
 	err := json.Unmarshal(data, &ms)
 	if err != nil {
 		log.Println("json decode err:", err)
@@ -97,7 +95,6 @@ func (game *Game) Handle(data []byte, sender *player) {
 
 	game.mutex.Lock()
 	defer game.mutex.Unlock()
-	log.Println(ms.Code)
 	switch ms.Code {
 	case c_update:
 		game.handleUpdate(ms, sender)
@@ -227,13 +224,16 @@ func (game *Game) listen(p *player) {
 	defer conn.Close()
 	for p.conn == conn {
 		messageType, message, err := conn.ReadMessage()
-		if err == io.EOF || websocket.CloseMessage == messageType {
+		if err != nil {
+			log.Println(err)
+		}
+		if err != nil || websocket.CloseMessage == messageType {
 			game.playerLeave(p)
 			break
 		} else if websocket.TextMessage == messageType {
 			game.Handle(message, p)
 		} else {
-			log.Println("error message Type")
+			log.Println("messageType:", messageType)
 		}
 	}
 }
@@ -242,7 +242,9 @@ func (game *Game) Destroy() {
 	game.mgr.Delete(game.id)
 	for i := 0; i < len(game.players); i++ {
 		if game.players[i] != nil && game.players[i].data != nil {
-			game.players[i].conn.Close()
+			if game.players[i].conn != nil {
+				game.players[i].conn.Close()
+			}
 			game.players[i].conn = nil
 		}
 	}

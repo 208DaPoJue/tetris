@@ -51,7 +51,6 @@ class Control {
         }
 
         if (this.rate + this.lastTime <= this.game.time.now) {
-            console.log("update");
             this.lastTime = this.game.time.now;
 
             if (!Control.move(this.model.sprite, new Phaser.Point(0, 1), this.model.grid)) {

@@ -102,14 +102,14 @@ class TetrisNet {
     constructor(private instance: Tetris){
         let index = window.location.pathname.lastIndexOf('/');
         let room = window.location.pathname.substr(index + 1);
-        this.ws = new WebService('ws://localhost:8100/ws/tetris/' + room);
+        let host = window.location.host
+        this.ws = new WebService('ws://' + host + '/ws/tetris/' + room);
     }
 
     listen = () =>{
         this.ws.connect();
 
         this.subject = this.ws.message.map( (data)=>{
-                console.log("message:", data);
                 let json = JSON.parse(data);
                 return <ServerMessage>json;
             })
