@@ -54,24 +54,13 @@ class Control {
             this.lastTime = this.game.time.now;
 
             if (!Control.move(this.model.sprite, new Phaser.Point(0, 1), this.model.grid)) {
-                Control.updateGrid(this.model.grid, this.model.sprite);
-                let rect = bound(this.model.sprite, this.model.sprite.position);
-                let lines = this.model.grid.checkLineComplete(this.model.grid, rect.y, rect.y + rect.height - 1);
-                if (lines.length > 0) {
-                    this.model.grid.deleteLines(lines);
-                    this.sound.explod.play();
-                }
-
-                if (rect.y < 0) {
-                    this.restart();
-                }
-                this.model.sprite = this.createSprite();
+                this.fallGround();
             }
         }
 
         if (this.view) {
             this.view.refresh();
-        }   
+        }
     }
 
     render = () => {
@@ -156,6 +145,43 @@ class Control {
         holdKey(keys.right, 150, moveWrap(new Phaser.Point(1, 0)));
         holdKey(keys.up, 150, change);
         holdKey(keys.change, 150, change);
+    }
+
+    private score(lines: number[]) {
+        this.model.grid.deleteLines(lines);
+        this.sound.explod.play();
+
+        this.model.score += this.calcScore(lines);
+    }
+
+    private calcScore(lines: number[]): number {
+        // linse must be sorted
+        const unit = 50;
+        let val = unit * lines.length;
+        let cnt = 0;
+        for (let i = 1; i < lines.length; i++) {
+            if (Math.abs(lines[i] - lines[i-1]) == 1) {
+                cnt++;
+                val += unit * cnt;
+            } else {
+                cnt = 0;
+            }
+        }
+        return val;
+    }
+
+    private fallGround() {
+        Control.updateGrid(this.model.grid, this.model.sprite);
+        let rect = bound(this.model.sprite, this.model.sprite.position);
+        let lines = this.model.grid.checkLineComplete(this.model.grid, rect.y, rect.y + rect.height - 1);
+        if (lines.length > 0) {
+            this.score(lines);
+        }
+
+        if (rect.y < 0) {
+            this.model.status = Statu.end;
+        }
+        this.model.sprite = this.createSprite();
     }
 }
 
