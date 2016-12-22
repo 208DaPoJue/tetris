@@ -2,19 +2,19 @@ var gulp = require("gulp");
 var webpack = require('webpack-stream');
 var webpackConfig = require("./webpack.config.js");
 
-var dest = '../dist'
-var destWeb = dest + '/web';
+var root = '../dist';
+var tetris = root + '/tetris';
+var staticResource = tetris + '/static';
 
 gulp.task("default", function () {
-    gulp.src('./server.py')
-        .pipe(gulp.dest(dest));
-    gulp.src('./node_modules/phaser/build/phaser.min.js')
-        .pipe(gulp.dest(destWeb));
+    
     gulp.src('./html/**')
-        .pipe(gulp.dest(destWeb));
+        .pipe(gulp.dest(tetris));
     gulp.src('./assets/**')
-        .pipe(gulp.dest(destWeb + '/assets'));
-    gulp.src('./typescript/src/index.ts')
+        .pipe(gulp.dest(staticResource + '/assets'));
+    gulp.src('./node_modules/phaser/build/phaser.min.js')
+        .pipe(gulp.dest(staticResource));
+    gulp.src('./typescript/html/index.tsx')
         .pipe(webpack(webpackConfig))
-        .pipe(gulp.dest(destWeb));
+        .pipe(gulp.dest(staticResource));
 });

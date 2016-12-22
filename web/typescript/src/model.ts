@@ -1,6 +1,5 @@
 import { GameView } from './view';
 import { Statu, GameData } from './message_struct';
-import { BlockSize } from './config';
 type Shape = number[][];
 
 /*
@@ -207,7 +206,7 @@ const intBitCount = 32;
 export
 class GameGrid {
     map: number[][];
-    constructor(public width: number, public height: number){
+    constructor(public width: number, public height: number, private defVal: number = 0){
         this.map = new  Array(height);
         for (let i = 0; i < height; i++){
             this.map[i] = this.newLine();
@@ -261,7 +260,7 @@ class GameGrid {
     private newLine(): number[] {
         let arr = new Array(this.width);
         for (let i = 0; i < this.width; i++) {
-            arr[i] = empty;
+            arr[i] = this.defVal;
         }
         return arr;
     }
@@ -315,12 +314,10 @@ class GameModel {
 
     readonly height: number;
     readonly width: number;
-    readonly blockSize: number;
 
-    constructor(game: Phaser.Game, width: number, height: number, blockSize: number) {
+    constructor(width: number, height: number) {
         this.height = height;
         this.width = width;
-        this.blockSize = blockSize;
 
         this.reset()
     }

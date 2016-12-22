@@ -1,6 +1,5 @@
-export const GameHeight = 16;
-export const GameWidth = 8;
-export const BlockSize = 32;
+export const GameHeight = 18;
+export const GameWidth = 10;
 
 export const sounds = {
     press: '../static/assets/sounds/press.mp3',

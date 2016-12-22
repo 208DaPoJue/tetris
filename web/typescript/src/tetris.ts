@@ -2,17 +2,18 @@ import { Subscription } from 'rxjs/Subscription';
 import 'rxjs/add/operator/map';
 import 'rxjs/add/operator/catch';
 
-import { GameModel, BlockSprite } from './model';
+import { GameModel, BlockSprite, Rect, BlockItem } from './model';
 import { GameView } from './view';
-import { GameWidth, GameHeight, BlockSize, sounds } from './config';
-import { Control, ShadowControl } from './control';
+import { GameWidth, GameHeight, sounds } from './config';
+import { Control, InformationBar } from './control';
 import { WebService } from './web_service';
 
 import { ServerMessage, ServerCommand, Statu, GameData, ClientCommand } from './message_struct';
 
+export
 interface ISprite {
     update: () => void;
-    render: () => void;
+    draw?: () => void;
 }
 
 function changeGuard<T>(obj: any, key: string, initVal: T, func: ()=>void) {
@@ -30,13 +31,11 @@ class ScoreSprite implements ISprite{
     constructor(game: Phaser.Game, private title: string, model: GameModel, x: number, y: number, style: any) {
         this.model = model;
         this.text = game.add.text(x, y, '', style);
-
-
     }
 
     update = () => { changeGuard(this.model, 'score', -1, this.updateText); }
 
-    render = () => {}
+    draw = () => {}
 
     private updateText= () => {
         let str = String(this.model.score);
@@ -44,65 +43,29 @@ class ScoreSprite implements ISprite{
     }
 }
 
-
-
+export
 class Tetris {
-    game: Phaser.Game;
     self: GameModel;
     opponent: GameModel;
 
+    nextBlocks: BlockItem[] = [];    // should in model
+
+    private animaFrameId: number;
+    private intervalId: NodeJS.Timer;
     private net: TetrisNet;
     private children: ISprite[] = [];
-    constructor(id: string) {
-        let elem = document.getElementById(id);
-        this.game = new Phaser.Game(elem.clientHeight, elem.clientWidth, Phaser.CANVAS, id, { preload: this.preload, create: this.create, update: this.update, render: this.render });
-
-    }
-
-    private init() {
-        // self
-        this.self = new GameModel(this.game, GameWidth, GameHeight, BlockSize);
-        let view = new GameView(this.game, this.self, 32, 32);
-        let control = new Control(this.game, this.self, view);
-        this.children.push(control);
-
-        // opponent
-        this.opponent = new GameModel(this.game, GameWidth, GameHeight, BlockSize / 4);
-        view = new GameView(this.game, this.opponent, 480, 240);
-        let shadow = new ShadowControl(this.game, this.opponent, view);
-        this.children.push(shadow);
-
-
-        let style = {font: '25px Arial', fill: '#ffffff', align: 'left', fontWeight: 'bold', stroke: '#000000', strokeThickness: 6};
-        this.children.push(new ScoreSprite(this.game, '我的得分', this.self, 20, 700, style));
-        this.children.push(new ScoreSprite(this.game, '对手得分', this.opponent, 20, 740, style));
-
-        this.net = new TetrisNet(this);
-    }
-
-    preload = () => {
-        this.game.load.audio('press', sounds.press);
-        this.game.load.audio('explod', sounds.explod);
-        this.game.load.audio('congratulation', sounds.congratulation);
-
-        // tmp
-        this.game.load.spritesheet('buttons', '../static/assets/images/buttons.png', 215, 41);
-    }
-
-    create = () => {
+    constructor() {
         document.body.oncontextmenu = function () { return false; };
 
-        Phaser.Canvas.setUserSelect(this.game.canvas, 'none');
-        Phaser.Canvas.setTouchAction(this.game.canvas, 'none');
+        //this.nextBlocks.length = 3; // inital to undefined
 
-        let btn = this.game.add.button(400, 80, 'buttons', () => {//添加一个按钮
-            if (this.self.status == Statu.waitting || this.self.status == Statu.pause) {
-                this.self.status = Statu.start;
-                this.net.start();
-            }
-        });
+        // self
+        this.self = new GameModel(GameWidth, GameHeight);
+        // opponent
+        this.opponent = new GameModel( GameWidth, GameHeight);
 
-        this.init();
+        this.loop();
+        this.net = new TetrisNet(this);
 
         this.net.listen();
     }
@@ -115,18 +78,56 @@ class Tetris {
 
     render = () => {
         for (let child of this.children) {
-            child.render();
+            if (child.draw){
+                child.draw();
+            }
         }
+    }
+
+    private loop = () => {
+        let requestAnimationFram = window.requestAnimationFrame || window.webkitRequestAnimationFrame;
+        let _loopRender = () => {
+            this.render();
+            this.update();
+            this.animaFrameId = requestAnimationFram(_loopRender);
+        };
+        _loopRender();
+        //this.intervalId = setInterval(this.update, 16);
+    }
+
+    dispose = () => {
+        let cancelAnimationFrame = window.cancelAnimationFrame || window.webkitCancelAnimationFrame;
+        cancelAnimationFrame(this.animaFrameId);
+
+        clearInterval(this.intervalId);
+    }
+
+    start = () => {
+        this.self.status = Statu.start;
+        this.net.ws.send({ code: ClientCommand.start });
+    }
+
+    pause = () => {
+        this.self.status = Statu.pause;
+        this.net.ws.send({ code: ClientCommand.pause });
+    }
+
+    addChild = (s: ISprite) => {
+        this.children.push(s);
+    }
+
+    deleteChild = (s: ISprite): boolean => {
+        for (let i = 0; i < this.children.length; i++) {
+            if (this.children[i] == s) {
+                this.children.splice(i, 1);
+                return true;
+            }
+        }
+        return false;
     }
 }
 
-window.onload = () => {
-    let instance = new Tetris('content');
-};
-
-
-export
-    class TetrisNet {
+class TetrisNet {
     ws: WebService;
     private subject: Subscription;
     private intervalId: NodeJS.Timer;
@@ -157,14 +158,6 @@ export
         clearInterval(this.intervalId);
         this.ws.close();
         this.subject.unsubscribe();
-    }
-
-    start = () => {
-        this.ws.send({ code: ClientCommand.start });
-    }
-
-    pause = () => {
-        this.ws.send({ code: ClientCommand.pause });
     }
 
     private onMessage = (message: ServerMessage) => {

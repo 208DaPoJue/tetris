@@ -1,8 +1,9 @@
 /// <reference path="../typings/index.d.ts" />
 import { GameGrid, BlockItem, mapToWorld, BlockSprite, BlockType, BlockMap, bound, GameModel } from './model';
-import { GameView } from './view'
-import { GameWidth, GameHeight, sounds, BlockSize } from './config';
+import { GameView, PreviewView, IView } from './view';
+import { GameWidth, GameHeight, sounds } from './config';
 import { Statu } from './message_struct';
+import { Tetris } from './tetris';
 
 function checkValid(sprite: BlockItem, position: Phaser.Point, grid: GameGrid): boolean {
     let rect = bound(sprite, position);
@@ -19,22 +20,41 @@ function checkValid(sprite: BlockItem, position: Phaser.Point, grid: GameGrid): 
     return true;
 }
 
-
 export
 class Control {
     sound: any = {};
-
     private random = new Phaser.RandomDataGenerator();
-    
+
     private rate = 500;
     private lastTime = 0;
+    private views: IView[] = [];
+    private game: Phaser.Game;
+    constructor(elem: Element, public model: GameModel, private nextBlocks: BlockItem[] ) {
+        this.game = new Phaser.Game(elem.clientWidth, elem.clientHeight, Phaser.CANVAS, elem, { preload: this.preload, create: this.create });
+    }
 
-    constructor(public game: Phaser.Game, public model: GameModel, public view: GameView) {
+    create = () => {
+        Phaser.Canvas.setUserSelect(this.game.canvas, 'none');
+        Phaser.Canvas.setTouchAction(this.game.canvas, 'none');
+
         this.sound.press = this.game.add.audio('press');
         this.sound.explod = this.game.add.audio('explod');
         this.sound.congratulation = this.game.add.audio('congratulation');
 
-        this.addEventListener();
+        this.views.push(new GameView(this.game, this.model, this.game.width, this.game.height, 0, 0));
+
+        for (let i = 0; i < 3;  i++){
+            this.createBlock();
+        }
+
+        this.addEventListener(); 
+    }
+    
+    preload = () => {
+        this.game.stage.disableVisibilityChange = true;
+        this.game.load.audio('press', sounds.press);
+        this.game.load.audio('explod', sounds.explod);
+        this.game.load.audio('congratulation', sounds.congratulation);
     }
 
     restart = () => {
@@ -47,7 +67,7 @@ class Control {
         }
 
         if (!this.model.sprite) {
-            this.model.sprite = this.createSprite();
+            this.model.sprite = this.nextSprite();
         }
 
         if (this.rate + this.lastTime <= this.game.time.now) {
@@ -57,28 +77,33 @@ class Control {
                 this.fallGround();
             }
         }
+    }
 
-        if (this.view) {
-            this.view.refresh();
+    draw = () => {
+        for (let view of this.views) {
+            view.refresh();
         }
     }
 
-    render = () => {
-        if (this.model.sprite) {
-            this.view.refresh();
-        }
-    }
-
-    createSprite = (): BlockSprite => {
+    createBlock = () => {
         let type = this.random.integerInRange(0, BlockType.cnt - 1);
         let state = this.random.integerInRange(0, BlockMap[type].length - 1);
-        let shape = BlockMap[type][state];
+        
+        this.nextBlocks.push({type: type, state: state});
+    }
+
+    nextSprite = (): BlockSprite => {
+        this.createBlock();
+
+        let block = this.nextBlocks[0];
+        let shape = BlockMap[block.type][block.state];
+        this.nextBlocks.splice(0, 1);
 
         let height = shape.length;
         let width = shape[0].length;
 
         let position = new Phaser.Point((GameWidth - width)>>1 , -height);
-        let sprite =  new BlockSprite(type, state, position);
+        let sprite =  new BlockSprite(block.type, block.state, position);
         return sprite;
     }
 
@@ -181,20 +206,40 @@ class Control {
         if (rect.y < 0) {
             this.model.status = Statu.end;
         }
-        this.model.sprite = this.createSprite();
+        this.model.sprite = this.nextSprite();
     }
 }
 
 export
-class ShadowControl {
-    constructor(game: Phaser.Game, private model: GameModel, private view: GameView) {
+class InformationBar {
+    private game: Phaser.Game;
+    private views: IView[] = [];
+    constructor(elem: Element, private tetrie: Tetris) {
+        this.game = new Phaser.Game(elem.clientWidth, elem.clientHeight, Phaser.CANVAS, elem, { preload: this.preload, create: this.create });
+    }
+
+    create = () => {
+        Phaser.Canvas.setUserSelect(this.game.canvas, 'none');
+        Phaser.Canvas.setTouchAction(this.game.canvas, 'none');
+
+        let offset = 0;
+        let preview = new PreviewView(this.game, this.tetrie.nextBlocks, this.game.width, this.game.height, 0, 0);
+        this.views.push(preview);
+
+        offset += preview.getBound().height;
+        let view = new GameView(this.game, this.tetrie.opponent, this.game.width, this.game.height - offset, 0, offset);
+        this.views.push(view);
+    }
+    
+    preload = () => {
     }
 
     update = ()=> {
-        this.view.refresh();
     }
     
-    render = ()=> {
-        this.view.refresh();
+    draw = ()=> {
+        for (let view of this.views) {
+            view.refresh();
+        }
     }
 }
