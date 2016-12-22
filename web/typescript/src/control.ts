@@ -139,7 +139,6 @@ class Control {
         //this.game
         let keys = this.game.input.keyboard.addKeys( { 'down': Phaser.KeyCode.DOWN, 'left': Phaser.KeyCode.LEFT, 'right': Phaser.KeyCode.RIGHT, 'up':  Phaser.KeyCode.UP, 'change': Phaser.KeyCode.SPACEBAR } );
 
-        let moveWrap = (offset: Phaser.Point) => { return ()=>{ Control.move(this.model.sprite, offset, this.model.grid)} };
         let holdKey = (key: Phaser.Key, nInterval: number, func:()=>void) => {
             let base = 0;
             key.onDown.add(()=> {base = 0;});
@@ -157,19 +156,17 @@ class Control {
             };
         }
 
-        let change = () => { this.changeSpriteState(); };
-
         //keys.down.onDown.add(moveWrap(new Phaser.Point(0, 1)));
         //keys.left.onDown.add( moveWrap(new Phaser.Point(-1, 0)));
         //keys.right.onDown.add( moveWrap(new Phaser.Point(1, 0)));
         //keys.up.onDown.add(change);
         //keys.change.onDown.add(change)
 
-        holdKey(keys.down, 30, moveWrap(new Phaser.Point(0, 1)));
-        holdKey(keys.left, 150, moveWrap(new Phaser.Point(-1, 0)));
-        holdKey(keys.right, 150, moveWrap(new Phaser.Point(1, 0)));
-        holdKey(keys.up, 150, change);
-        holdKey(keys.change, 150, change);
+        holdKey(keys.down, 30, this.down);
+        holdKey(keys.left, 150, this.left);
+        holdKey(keys.right, 150, this.right);
+        holdKey(keys.up, 150, this.change);
+        holdKey(keys.change, 150, this.change);
     }
 
     private score(lines: number[]) {
@@ -207,6 +204,29 @@ class Control {
             this.model.status = Statu.end;
         }
         this.model.sprite = this.nextSprite();
+    }
+
+
+    private move = (offset: Phaser.Point) => { 
+        if (this.model.sprite) {
+            Control.move(this.model.sprite, offset, this.model.grid); 
+        }
+    };
+
+    down = ()=> {
+        this.move(new Phaser.Point(0, 1));
+    }
+
+    left = ()=> {
+        this.move(new Phaser.Point(-1, 0));
+    };
+
+    right = () => {
+        this.move(new Phaser.Point(1, 0));
+    };
+
+    change = () => {
+         this.changeSpriteState();
     }
 }
 

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { findDOMNode, render } from 'react-dom';
 import { Tetris } from '../src/tetris';
 import { Control } from '../src/control';
+import { Controler } from './phone_control';
 
 interface Props {tetris: Tetris, style?: any}
 export 
@@ -19,10 +20,16 @@ class MainWindow extends React.Component<Props, undefined> {
     }
 
     render() {
-        return <div style={this.props.style}></div>
+        return <div style={this.props.style}>
+                <Controler tetris={this.props.tetris} game={this}></Controler>
+               </div>
     }
 
     componentWillUnmount() {
         this.props.tetris.deleteChild(this.control);
+    }
+
+    getControl = (): Control => {
+        return this.control;
     }
 }
