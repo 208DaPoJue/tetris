@@ -10,6 +10,7 @@ const (
 	Start
 	Run
 	End
+	GiveUp
 )
 
 // client command

@@ -27,6 +27,8 @@ type Game struct {
 	id      string
 	players []*player
 
+	status int
+
 	mutex sync.Mutex
 }
 
@@ -82,11 +84,13 @@ func (game *Game) init(mgr *GamesMgr, id string) {
 	game.players = make([]*player, 2)
 	game.id = id
 
+	game.status = Waitting
+
 	mgr.Games[id] = game
 }
 
 // Handle function deal with udp data to json object and dispatch to message's self handle
-func (game *Game) Handle(data []byte, sender *player) {
+func (game *Game) Handle(data []byte, sender *player, idx int) {
 	var ms ClientMessage
 	err := json.Unmarshal(data, &ms)
 	if err != nil {
@@ -97,13 +101,13 @@ func (game *Game) Handle(data []byte, sender *player) {
 	defer game.mutex.Unlock()
 	switch ms.Code {
 	case c_update:
-		game.handleUpdate(ms, sender)
+		game.handleUpdate(ms, sender, idx)
 
 	case c_leave:
-		game.handleLeave(ms, sender)
+		game.handleLeave(ms, sender, idx)
 
 	case c_start:
-		game.handleStart(ms, sender)
+		game.handleStart(ms, sender, idx)
 
 	default:
 
@@ -121,7 +125,7 @@ func (game *Game) getPlayer(token string) (*player, int) {
 	return nil, -1
 }
 
-func (game *Game) handleUpdate(ms ClientMessage, sender *player) {
+func (game *Game) handleUpdate(ms ClientMessage, sender *player, idx int) {
 	if sender == nil {
 		log.Println("err empty player")
 		return
@@ -139,10 +143,15 @@ func (game *Game) handleUpdate(ms ClientMessage, sender *player) {
 	game.notify(nOther, sm)
 }
 
-func (game *Game) handleStart(ms ClientMessage, sender *player) {
+func (game *Game) handleStart(ms ClientMessage, sender *player, idx int) {
+	if game.status != Waitting {
+		return
+	}
+
 	if sender.data == nil {
-		sender.data = &GameData{Status: Start}
-	} else if sender.data.Status == Waitting || sender.data.Status == Pause {
+		sender.data = &GameData{Status: Waitting}
+	}
+	if sender.data.Status == Waitting {
 		sender.data.Status = Start
 	}
 
@@ -151,6 +160,7 @@ func (game *Game) handleStart(ms ClientMessage, sender *player) {
 		return
 	}
 
+	game.status = Run
 	for i := 0; i < len(game.players); i++ {
 		game.notify(i, ServerMessage{Code: s_start})
 	}
@@ -187,7 +197,7 @@ func (game *Game) notify(idx int, data ServerMessage) {
 	game.response(player, data)
 }
 
-func (game *Game) playerLeave(p *player) {
+func (game *Game) playerLeave(p *player, idx int) {
 	if p == nil || p.conn == nil {
 		return
 	}
@@ -195,20 +205,20 @@ func (game *Game) playerLeave(p *player) {
 	p.conn.Close()
 	p.conn = nil
 
-	opponent, _ := game.getOpponent(p)
-	if opponent == nil || (opponent.data != nil && opponent.data.Status == End) {
-		game.Destroy()
+	if game.status == Waitting {
+		game.players[idx] = nil
+	} else if p.data != nil {
+		p.data.Status = End
 	}
 
-	if p.data != nil && p.data.Status >= Run {
-		p.data.Status = End
-	} else {
-
+	opponent, _ := game.getOpponent(p)
+	if opponent == nil || opponent.conn == nil {
+		game.Destroy()
 	}
 }
 
-func (game *Game) handleLeave(ms ClientMessage, sender *player) {
-	game.playerLeave(sender)
+func (game *Game) handleLeave(ms ClientMessage, sender *player, idx int) {
+	game.playerLeave(sender, idx)
 }
 
 func newPlayer(token string, conn *websocket.Conn) *player {
@@ -219,7 +229,7 @@ func newPlayer(token string, conn *websocket.Conn) *player {
 		lastUpdate: time.Now().UnixNano()}
 }
 
-func (game *Game) listen(p *player) {
+func (game *Game) listen(p *player, idx int) {
 	conn := p.conn
 	defer conn.Close()
 	for p.conn == conn {
@@ -228,10 +238,10 @@ func (game *Game) listen(p *player) {
 			log.Println(err)
 		}
 		if err != nil || websocket.CloseMessage == messageType {
-			game.playerLeave(p)
+			game.playerLeave(p, idx)
 			break
 		} else if websocket.TextMessage == messageType {
-			game.Handle(message, p)
+			game.Handle(message, p, idx)
 		} else {
 			log.Println("messageType:", messageType)
 		}
@@ -251,16 +261,20 @@ func (game *Game) Destroy() {
 }
 
 func (game *Game) TryJoin(token string, conn *websocket.Conn) bool {
+	if game.status != Waitting {
+		return false
+	}
+
 	game.mutex.Lock()
 
-	player, _ := game.getPlayer(token)
+	player, idx := game.getPlayer(token)
 	if player != nil {
 		player.conn = conn
 	} else {
-		for i := 0; i < len(game.players); i++ {
-			if game.players[i] == nil {
-				game.players[i] = newPlayer(token, conn)
-				player = game.players[i]
+		for idx = 0; idx < len(game.players); idx++ {
+			if game.players[idx] == nil {
+				game.players[idx] = newPlayer(token, conn)
+				player = game.players[idx]
 				break
 			}
 		}
@@ -268,7 +282,7 @@ func (game *Game) TryJoin(token string, conn *websocket.Conn) bool {
 	game.mutex.Unlock()
 
 	if player != nil {
-		game.listen(player)
+		game.listen(player, idx)
 		return true
 	}
 
@@ -276,6 +290,9 @@ func (game *Game) TryJoin(token string, conn *websocket.Conn) bool {
 }
 
 func (game *Game) response(p *player, ms ServerMessage) {
+	if p.conn == nil {
+		return
+	}
 	str, err := json.Marshal(ms)
 	if err != nil {
 		log.Println(err)
