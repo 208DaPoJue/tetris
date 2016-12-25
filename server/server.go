@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +23,21 @@ var upgrader = websocket.Upgrader{CheckOrigin: checkOrigin}
 
 var Count int = 0
 
+func getCurrentDirectory() string {
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return dir
+}
+
 func main() {
 	port := flag.String("p", "8100", "port to serve on")
 	directory := flag.String("d", ".", "the directory of static file to host")
+	if *directory == "." && runtime.GOOS == "darwin" {
+		*directory = getCurrentDirectory()
+	}
+	log.Println(*directory)
 	flag.Parse()
 
 	mgr := NewGameMgr()

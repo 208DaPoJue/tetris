@@ -127,8 +127,8 @@ class Controler extends React.Component<Props, undefined> {
     render() {
         let style = {
             background: 'url("../static/assets/images/dpad.png")',
-            width: "350px",
-            height: "350px",
+            width: "235px",
+            height: "235px",
             position: 'absolute',
             bottom: '45px',
             left: '45px'
